@@ -1,7 +1,11 @@
 <html>
     <body>
-        <h2>Disassembler</h2>
+        <h2>Input</h2>
         <textarea id="chip8_hex" cols="48" rows="16"></textarea><br />
+        <button id="chip8_step">Step</button><br />
+        <h2>Output</h2>
+        <canvas id="chip8_display" width="640", height="320"></canvas>
+        <h2>Disassembler</h2>
         <button id="chip8_disassemble">Disassemble</button><br />
         <textarea id="chip8_disassembly" cols="24" rows="32"></textarea><br />
         <script src="chip8-tools.js"></script>
