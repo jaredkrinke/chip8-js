@@ -1,0 +1,47 @@
+Instructions:
+
+cls: Clear the display
+draw <register1> <register2> <bytes>: Draw the given number of bytes starting at the address register to the display at location (register1, register2)
+
+ldstr <register>: Set the sound timer register to the value of the given register
+
+j <address>: Jump to address
+jr0 <address>: Jump to address plus the value of register 0
+ret: Return from subroutine (set PC to address on top of stack and decrement SP)
+call <address>: Call subroutine (increment SP, add PC to stack, and then set PC to subroutine)
+
+seq <register> <byte>: Skip next instruction if register value equals byte
+seqr <register1> <register2>: Skip next instruction if two register values are equal
+sneq <register> <byte> Skip next instruction if register value does not equal byte
+sneqr <register1> <register2> Skip next instruction if two register values are not equal
+skp <register>: Skip the next instruction if the key with the value of the register is pressed
+sknp <register>: Skip the next instruction if the key with the value of the register is not pressed
+
+ldi <register> <byte>: Set register to byte
+copy <register1> <register2>: Set register1 to register2
+ldx <register>: Load registers 0 through the given register from memory locations starting at the address register
+
+ldai <address>: Set address register to address
+ldaf <register>: Set the address register to the address of the font for the digit in the given register
+addar <register>: Set the address register to the sum of the address register and the given register
+
+stx <register>: Store registers 0 through the given register in memory starting at the address register
+stbr <register>: Store the base 10 digits of the value of the register as follows: 100s digit at the address register; 10s digit next; 1s digit last
+
+ldrdt <register>: Set the register to the value of the delay timer
+lddtr <register>: Set the delay timer register to the value of the register
+ldkp <register>: Wait for a key press and store the key value in the register
+
+addi <register> <byte>: Add byte to register (and set VF if result is > 255)
+addr <register1> <register2>: Set register1 to the sum of register1 and register2 (and set VF if result is > 255)
+subr <register1> <register2>: Set register1 to register1 minus register2 (and set VF if result is < 0)
+busr <register1> <register2>: Set register1 to register2 minus register1 (and set VF if result is < 0)
+
+orr <register1> <register2>: Set register1 to the logical or of register1 and register2
+andr <register1> <register2>: Set register1 to the logical and of register1 and register2
+xorr <register1> <register2>: Set register1 to the exclusive or of register1 and register2
+
+shr <register1>: Logical shift register 1 to the right one bit (and set VF to the bit that was shifted out)
+shl <register1>: Logical shift register 1 to the left one bit (and set VF to the bit that was shifted out)
+
+rnd <register> <byte>: Set register to the logical and of a random number on [0, 255] and the given byte mask
