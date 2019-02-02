@@ -353,7 +353,7 @@ var Chip8 = {
 
     process: function () {
         var pc = this.registers[Register.pc];
-        this.registers[Register.pc] = pc + 1;
+        this.registers[Register.pc] = pc + 2;
 
         var instruction = Instruction.parse(this.get16(pc));
         switch (instruction.opcode) {
@@ -401,6 +401,7 @@ function parseHex(s) {
     return bytes;
 }
 
+// Display
 var Display = {
     canvas:  document.getElementById("chip8_display"),
     context: document.getElementById("chip8_display").getContext("2d"),
@@ -425,6 +426,14 @@ var Display = {
     }
 };
 
+// Processor state
+var stateNext = document.getElementById("chip8_state_next");
+function updateState() {
+    var binary = Chip8.get16(Chip8.registers[Register.pc]);
+    var instruction = Instruction.parse(binary);
+    stateNext.innerText = Instruction.stringify(instruction);
+}
+
 // Control
 var started = false;
 document.getElementById("chip8_step").onclick = function () {
@@ -438,6 +447,7 @@ document.getElementById("chip8_step").onclick = function () {
 
     Chip8.process();
     Display.refresh();
+    updateState();
 };
 
 // Disassembler
