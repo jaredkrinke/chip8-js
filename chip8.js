@@ -1,496 +1,742 @@
-(function (document) {
-    function createArray(size) {
-        var array = [];
-        for (var i = 0; i < size; i ++) {
-            array[i] = 0;
-        }
-        return array;
-    }
-
-    function createTable(id, values, columns, rows, total) {
-        var table = document.getElementById(id);
-        var tds = [];
-        for (var i = 0; i < rows; i++) {
-            var tr = document.createElement("tr");
-            for (var j = 0; j < columns; j++) {
-                var index = i * columns + j;
-                if (index && index >= total) {
-                    break;
-                }
-
-                var td = document.createElement("td");
-                td.innerText = values[index];
-                tds[index] = td;
-                tr.appendChild(td);
-            }
-
-            table.appendChild(tr);
-        }
-
-        return tds;
-    }
-
-    var displayWidth = 64;
-    var displayHeight = 32;
-
-    function set(array, index, value) {
-        array[index] = value;
-        array.table[index].innerText = value;
-    }
-
-    function setxy(array, x, y, value) {
-        set(array, y * displayWidth + x, value);
-    }
-
-    function get(array, index) {
-        return array[index];
-    }
-
-    function getxy(array, x, y) {
-        return array[y * displayWidth + x];
-    }
-
-    function get16(array, index) {
-        return (array[index] << 8) | (array[index + 1]);
-    }
-
-    // Registers
-    // 0 - 14 are unnamed (8 bits each)
-    var VF = 15;    // Used for carry flag (8 bits)
-    var DT = 16;    // Delay timer (60 Hz) (8 bits)
-    var ST = 17;    // Sound timer (60 Hz) (8 bits)
-    var SP = 18;    // Stack pointer (8 bits)
-    var I = 19;     // Address register (16 bits)
-    var PC = 20;    // Program counter (16 bits)
-
-    var registers = createArray(18);
-    var stack = createArray(32); // 16 bits each
-    var memory = createArray(4096); // 8 bits each
-    var display = createArray(displayWidth * displayHeight); // 1 bit each
-    var keys = createArray(16);
-
-    function clearArray(array) {
-        for (var i = 0; i < array.length; i++) {
-            set(array, i, 0);
-        }
-    }
-
-    function reset() {
-        clearArray(registers);
-        clearArray(stack);
-        clearArray(memory);
-        clearArray(display);
-        clearArray(keys);
-
-        set(registers, PC, 0x200);
-    }
-
-    registers.table = createTable("chip8_registers", registers, 16, 2, registers.length)
-    stack.table = createTable("chip8_stack", registers, 16, 2)
-    memory.table = createTable("chip8_memory", memory, 64, 64);
-    display.table = createTable("chip8_display", display, displayWidth, displayHeight);
-
-    // TODO: timers
-    // TODO: input
-    // TODO: display
-    // TODO: sound
-
-    function process() {
-        var pc = get16(registers, PC);
-        var instruction = get16(memory, pc);
-        set(registers, PC, pc + 1)
-
-        switch ((instruction >> 12) & 0xf) {
-            case 0:
-            {
-                switch (instruction) {
-                    // CLS
-                    case 0x00e0:
-                    clearArray(display);
-                    break;
-
-                    // RET
-                    case 0x00ee:
-                    var sp = get(regsiters, sp);
-                    set(registers, PC, get(stack, sp));
-                    set(registers, SP, sp - 1);
-                    break;
-                }
-            }
-            break;
-
-            // JP
-            case 1:
-            {
-                var address = instruction & 0xfff;
-                set(registers, PC, address);
-            }
-            break;
-
-            // CALL
-            case 2:
-            {
-                var address = instruction & 0xfff;
-                var sp = get(registers, SP);
-                set(stack, sp, pc);
-                set(registers, SP, sp + 1);
-                set(registers, PC, address);
-            }
-            break;
-
-            // SE
-            case 3:
-            {
-                var r = (instruction >> 8) & 0xf;
-                var a = instruction & 0xff;
-                var b = get(registers, r);
-                if (a === b) {
-                    set(registers, PC, pc + 2);
-                }
-            }
-            break;
-
-            // SNE
-            case 4:
-            {
-                var r = (instruction >> 8) & 0xf;
-                var a = instruction & 0xff;
-                var b = get(registers, r);
-                if (a !== b) {
-                    set(registers, PC, pc + 2);
-                }
-            }
-            break;
-
-            // SER
-            case 5:
-            {
-                var ra = (instruction >> 8) & 0xf;
-                var rb = (instruction >> 4) & 0xf;
-                var a = get(registers, ra);
-                var b = get(registers, rb);
-                if (a === b) {
-                    set(registers, PC, pc + 2);
-                }
-            }
-            break;
-
-            // LD
-            case 6:
-            {
-                var r = (instruction >> 8) & 0xf;
-                var v = instruction & 0xff;
-                set(registers, r, v);
-            }
-            break;
-
-            // ADD
-            case 7:
-            {
-                var r = (instruction >> 8) & 0xf;
-                var rv = get(registers, r);
-                var v = instruction & 0xff;
-                var result = rv + v;
-                set(registers, r, result & 0xff);
-                set(registers, vf, (result > 0xff) ? 1 : 0);
-            }
-            break;
-
-            case 8:
-            {
-                switch (instruction & 0xf) {
-                    // LDR
-                    case 0:
-                    {
-                        var ra = (instruction >> 8) & 0xf;
-                        var rb = (instruction >> 4) & 0xf;
-                        var rbv = get(registers, rb);
-                        set(registers, ra, rbv);
-                    }
-                    break;
-
-                    // ORR
-                    case 1:
-                    {
-                        var ra = (instruction >> 8) & 0xf;
-                        var rav = get(registers, ra);
-                        var rb = (instruction >> 4) & 0xf;
-                        var rbv = get(registers, rb);
-                        set(registers, ra, rav | rbv);
-                    }
-                    break;
-
-                    // ANDR
-                    case 2:
-                    {
-                        var ra = (instruction >> 8) & 0xf;
-                        var rav = get(registers, ra);
-                        var rb = (instruction >> 4) & 0xf;
-                        var rbv = get(registers, rb);
-                        set(registers, ra, rav & rbv);
-                    }
-                    break;
-
-                    // XORR
-                    case 3:
-                    {
-                        var ra = (instruction >> 8) & 0xf;
-                        var rav = get(registers, ra);
-                        var rb = (instruction >> 4) & 0xf;
-                        var rbv = get(registers, rb);
-                        set(registers, ra, rav ^ rbv);
-                    }
-                    break;
-
-                    // ADDR
-                    case 4:
-                    {
-                        var ra = (instruction >> 8) & 0xf;
-                        var rav = get(registers, ra);
-                        var rb = (instruction >> 4) & 0xf;
-                        var rbv = get(registers, rb);
-                        var result = rav + rbv;
-                        set(registers, ra, result & 0xff);
-                        set(registers, vf, (result > 0xff) ? 1 : 0);
-                    }
-                    break;
-
-                    // SUBR
-                    case 5:
-                    {
-                        var ra = (instruction >> 8) & 0xf;
-                        var rav = get(registers, ra);
-                        var rb = (instruction >> 4) & 0xf;
-                        var rbv = get(registers, rb);
-                        var result = rav - rbv;
-                        set(registers, ra, result & 0xff);
-                        set(registers, vf, rav > rbv);
-                    }
-                    break;
-
-                    // SHR
-                    case 6:
-                    {
-                        var r = (instruction >> 8) & 0xf;
-                        var rv = get(registers, r);
-                        set(registers, r, rv >> 1);
-                        set(registers, vf, rv & 0x1);
-                    }
-                    break;
-
-                    // BUSR
-                    case 7:
-                    {
-                        var ra = (instruction >> 8) & 0xf;
-                        var rav = get(registers, ra);
-                        var rb = (instruction >> 4) & 0xf;
-                        var rbv = get(registers, rb);
-                        var result = rbv - rav;
-                        set(registers, ra, result & 0xff);
-                        set(registers, vf, rbv > rav);
-                    }
-                    break;
-
-                    // SHL
-                    case 0xe:
-                    {
-                        var r = (instruction >> 8) & 0xf;
-                        var rv = get(registers, r);
-                        set(registers, r, rv << 1);
-                        set(registers, vf, (rv & 0x80) ? 1 :0);
-                    }
-                    break;
-                }
-            }
-            break;
-
-            // SNER
-            case 9:
-            {
-                var ra = (instruction >> 8) & 0xf;
-                var rb = (instruction >> 4) & 0xf;
-                var a = get(registers, ra);
-                var b = get(registers, rb);
-                if (a !== b) {
-                    set(registers, PC, pc + 2);
-                }
-            }
-            break;
-
-            // LDI
-            case 0xa:
-            {
-                var address = instruction & 0xfff;
-                set(registers, I, address);
-            }
-            break;
-
-            // JPR
-            case 0xb:
-            {
-                var address = instruction & 0xfff;
-                var r0v = get(registers, 0);
-                set(registers, PC, address + r0v);
-            }
-            break;
-
-            // RND
-            case 0xc:
-            {
-                var r = (instruction >> 8) & 0xf;
-                var v = instruction & 0xff;
-                var random = Math.floor(Math.random() * 256);
-                set(registers, r, random & v);
-            }
-            break;
-
-            // DRW
-            case 0xd:
-            {
-                var ra = (instruction >> 8) & 0xf;
-                var rb = (instruction >> 4) & 0xf;
-                var bytes = instruction & 0xf;
-                var spriteAddress = get(registers, I);
-                var x0 = get(registers, ra);
-                var y0 = get(registers, rb);
-                var collided = false;
-                for (var byte = 0; byte < bytes; byte++) {
-                    for (var i = 0; i < 8; i++) {
-                        var x = x0 + i;
-                        var y = y0 + byte;
-                        var pixel_destination = getxy(display, x, y);
-                        var pixel_source = get(memory, spriteAddress + i + 8 * byte);
-                        setxy(display, x, y, pixel_destination ^ pixel_source);
-                        if (pixel_destination && pixel_source) {
-                            collided = true;
-                        }
-                    }
-                }
-            }
-            break;
-
-            case 0xe:
-            {
-                switch (instruction & 0xff) {
-                    // SKP
-                    case 0x9e:
-                    {
-                        var r = (instruction >> 8) & 0xf;
-                        var key = get(keys, r);
-                        if (key) {
-                            set(registers, PC, pc + 2);
-                        }
-                    }
-                    break;
-
-                    // SKNP
-                    case 0xa1:
-                    {
-                        var r = (instruction >> 8) & 0xf;
-                        var key = get(keys, r);
-                        if (!key) {
-                            set(registers, PC, pc + 2);
-                        }
-                    }
-                    break;
-                }
-            }
-            break;
-
-            case 0xf:
-            {
-                switch (instruction & 0xf0ff) {
-                    // LDD
-                    case 0x07:
-                    {
-                        var ra = (instruction >> 8) & 0xf;
-                        var rdv = get(registers, DT);
-                        set(registers, ra, rdv);
-                    }
-                    break;
-
-                    // LDK
-                    case 0x0a:
-                    // TODO: Input
-                    break;
-
-                    // STDR
-                    case 0x15:
-                    {
-                        var r = (instruction >> 8) & 0xf;
-                        var rv = get(registers, r);
-                        set(registers, DT, rv);
-                    }
-                    break;
-
-                    // STSR
-                    case 0x18:
-                    {
-                        var r = (instruction >> 8) & 0xf;
-                        var rv = get(registers, r);
-                        set(registers, ST, rv);
-                    }
-                    break;
-
-                    // ADDAR
-                    case 0x1e:
-                    {
-                        var r = (instruction >> 8) & 0xf;
-                        var rv = get(registers, r);
-                        var i = get(registers, I);
-                        set(memory, I, i + rv);
-                    }
-                    break;
-
-                    // LDIFR
-                    case 0x29:
-                    // TODO: Fonts
-                    break;
-
-                    // STIBR
-                    case 0x33:
-                    {
-                        var r = (instruction >> 8) & 0xf;
-                        var rv = get(registers, r);
-                        var i = get(registers, I);
-                        set(memory, i, Math.floor(rv / 100));
-                        set(memory, i + 1, Math.floor((rv % 100) / 10));
-                        set(memory, i + 2, rv % 10);
-                    }
-                    break;
-
-                    // STX
-                    case 0x55:
-                    {
-                        var i = get(registers, I);
-                        for (var j = 0; j < 16; j++) {
-                            set(memory, i + j, get(registers, j));
-                        }
-                    }
-                    break;
-
-                    // LDX
-                    case 0x65:
-                    {
-                        var i = get(registers, I);
-                        for (var j = 0; j < 16; j++) {
-                            set(registers, j, get(memory, i + j));
-                        }
-                    }
-                    break;
-                }
-            }
-            break;
-        }
-
-        // TODO: Decrement timers, if needed
-    }
-
-    document.getElementById("chip8_button_step").onclick = function () {
-        process();
+// Instructions
+function createEnum(values) {
+    var o = {
+        _names: []
     };
 
-    document.getElementById("chip8_button_reset").onclick = function () {
-        reset();
-    };
-})(document);
+    for (var i = 0; i < values.length; i++) {
+        var index = i + 1;
+        o[values[i]] = index;
+        o._names[index] = values[i];
+    }
+
+    return o;
+}
+
+var Opcode = createEnum([
+    "nop",
+    "cls",
+    "draw",
+    "ldstr",
+    "j",
+    "jr0",
+    "ret",
+    "call",
+    "seq",
+    "seqr",
+    "sneq",
+    "sneqr",
+    "skp",
+    "sknp",
+    "ldi",
+    "copy",
+    "ldx",
+    "ldai",
+    "ldaf",
+    "addar",
+    "stx",
+    "stbr",
+    "ldrdt",
+    "lddtr",
+    "ldkp",
+    "addi",
+    "addr",
+    "subr",
+    "busr",
+    "orr",
+    "andr",
+    "xorr",
+    "shr",
+    "shl",
+    "rnd",
+    "raw"
+]);
+
+var Instruction = {};
+Instruction.create = function (opcode, argument1, argument2, argument3) {
+    return {
+        opcode: opcode,
+        a: argument1,
+        b: argument2,
+        c: argument3
+    }
+};
+
+Instruction.parse = function (binary) {
+    switch ((binary >> 12) & 0xf) {
+        case 0:
+        {
+            switch (binary & 0xfff) {
+                case 0x0e0:
+                return Instruction.create(Opcode.cls);
+                break;
+
+                case 0x0ee:
+                return Instruction.create(Opcode.ret);
+                break;
+            }
+        }
+        break;
+
+        case 1:
+        return Instruction.create(Opcode.j, binary & 0xfff);
+        break;
+
+        case 2:
+        return Instruction.create(Opcode.call, binary & 0xfff);
+        break;
+
+        case 3:
+        return Instruction.create(Opcode.seq, (binary >> 8) & 0xf, binary & 0xff);
+        break;
+
+        case 4:
+        return Instruction.create(Opcode.sneq, (binary >> 8) & 0xf, binary & 0xff);
+        break;
+
+        case 5:
+        return Instruction.create(Opcode.seqr, (binary >> 8) & 0xf, (binary >> 4) & 0xf);
+        break;
+
+        case 6:
+        return Instruction.create(Opcode.ldi, (binary >> 8) & 0xf, binary & 0xff);
+        break;
+
+        case 7:
+        return Instruction.create(Opcode.addi, (binary >> 8) & 0xf, binary & 0xff);
+        break;
+
+        case 8:
+        {
+            switch (binary & 0xf) {
+                case 0:
+                return Instruction.create(Opcode.copy, (binary >> 8) & 0xf, (binary >> 4) & 0xf);
+                break;
+
+                case 1:
+                return Instruction.create(Opcode.orr, (binary >> 8) & 0xf, (binary >> 4) & 0xf);
+                break;
+
+                case 2:
+                return Instruction.create(Opcode.andr, (binary >> 8) & 0xf, (binary >> 4) & 0xf);
+                break;
+
+                case 3:
+                return Instruction.create(Opcode.xorr, (binary >> 8) & 0xf, (binary >> 4) & 0xf);
+                break;
+
+                case 4:
+                return Instruction.create(Opcode.addr, (binary >> 8) & 0xf, (binary >> 4) & 0xf);
+                break;
+
+                case 5:
+                return Instruction.create(Opcode.subr, (binary >> 8) & 0xf, (binary >> 4) & 0xf);
+                break;
+
+                case 6:
+                return Instruction.create(Opcode.shr, (binary >> 8) & 0xf);
+                break;
+
+                case 7:
+                return Instruction.create(Opcode.busr, (binary >> 8) & 0xf, (binary >> 4) & 0xf);
+                break;
+
+                case 0xe:
+                return Instruction.create(Opcode.shl, (binary >> 8) & 0xf);
+                break;
+            }
+        }
+        break;
+
+        case 9:
+        return Instruction.create(Opcode.sneqr, (binary >> 8) & 0xf, (binary >> 4) & 0xf);
+        break;
+
+        case 0xa:
+        return Instruction.create(Opcode.ldai, binary & 0xfff);
+        break;
+
+        case 0xb:
+        return Instruction.create(Opcode.jr0, binary & 0xfff);
+        break;
+
+        case 0xc:
+        return Instruction.create(Opcode.rnd, (binary >> 8) & 0xf, binary & 0xff);
+        break;
+
+        case 0xd:
+        return Instruction.create(Opcode.draw, (binary >> 8) & 0xf, (binary >> 4) & 0xf, binary & 0xf);
+        break;
+
+        case 0xe:
+        {
+            switch (binary & 0xff) {
+                case 0x9e:
+                return Instruction.create(Opcode.skp, (binary >> 8) & 0xf);
+                break;
+
+                case 0xa1:
+                return Instruction.create(Opcode.sknp, (binary >> 8) & 0xf);
+                break;
+            }
+        }
+        break;
+
+        case 0xf:
+        {
+            switch (binary & 0xff) {
+                case 7:
+                return Instruction.create(Opcode.ldrdt, (binary >> 8) & 0xf);
+                break;
+
+                case 0xa:
+                return Instruction.create(Opcode.ldkp, (binary >> 8) & 0xf);
+                break;
+
+                case 0x15:
+                return Instruction.create(Opcode.lddtr, (binary >> 8) & 0xf);
+                break;
+
+                case 0x18:
+                return Instruction.create(Opcode.ldstr, (binary >> 8) & 0xf);
+                break;
+
+                case 0x1e:
+                return Instruction.create(Opcode.addar, (binary >> 8) & 0xf);
+                break;
+
+                case 0x29:
+                return Instruction.create(Opcode.ldaf, (binary >> 8) & 0xf);
+                break;
+
+                case 0x33:
+                return Instruction.create(Opcode.stbr, (binary >> 8) & 0xf);
+                break;
+
+                case 0x55:
+                return Instruction.create(Opcode.stx, (binary >> 8) & 0xf);
+                break;
+
+                case 0x65:
+                return Instruction.create(Opcode.ldx, (binary >> 8) & 0xf);
+                break;
+            }
+        }
+        break;
+    }
+
+    return Instruction.create(Opcode.raw, binary);
+};
+
+Instruction.parseAll = function (bytes, cb) {
+    for (var i = 0; i < bytes.length - 1; i += 2) {
+        var binary = (bytes[i] << 8) | bytes[i + 1];
+        cb(Instruction.parse(binary), binary);
+    }
+};
+
+Instruction.stringify = function (instruction) {
+    // TODO: Consider distinguishing registers, etc.
+    var str = Opcode._names[instruction.opcode];
+    if (instruction.a !== undefined) {
+        str += " " + instruction.a;
+    }
+    if (instruction.b !== undefined) {
+        str += " " + instruction.b;
+    }
+    if (instruction.c !== undefined) {
+        str += " " + instruction.c;
+    }
+    return str;
+};
+
+// Processing
+var Register = createEnum([
+    "v0",
+    "v1",
+    "v2",
+    "v3",
+    "v4",
+    "v5",
+    "v6",
+    "v7",
+    "v8",
+    "v9",
+    "va",
+    "vb",
+    "vc",
+    "vd",
+    "ve",
+    "vf",   // Used for carry flag (8 bits)
+    "dt",   // Delay timer (60 Hz) (8 bits)
+    "st",   // Sound timer (60 Hz) (8 bits)
+    "sp",   // Stack pointer (8 bits)
+    "i",    // Address register (16 bits)
+    "pc"    // Program counter (16 bits)
+]);
+
+function createArray(size) {
+    var array = [];
+    for (var i = 0; i < size; i ++) {
+        array[i] = 0;
+    }
+    return array;
+}
+
+function clearArray(array) {
+    for (var i = 0; i < array.length; i++) {
+        array[i] = 0;
+    }
+}
+
+var displayWidth = 64;
+var displayHeight = 32;
+var font = [
+    0xf0, 0x90, 0x90, 0x90, 0xf0, // 0
+    0x20, 0x60, 0x20, 0x20, 0x70, // 1
+    0xf0, 0x10, 0xf0, 0x80, 0xf0, // 2
+    0xf0, 0x10, 0xf0, 0x10, 0xf0, // 3
+    0x90, 0x90, 0xf0, 0x10, 0x10, // 4
+    0xf0, 0x80, 0xf0, 0x10, 0xf0, // 5
+    0xf0, 0x80, 0xf0, 0x90, 0xf0, // 6
+    0xf0, 0x10, 0x20, 0x40, 0x40, // 7
+    0xf0, 0x90, 0xf0, 0x90, 0xf0, // 8
+    0xf0, 0x90, 0xf0, 0x10, 0xf0, // 9
+    0xf0, 0x90, 0xf0, 0x90, 0x90, // a
+    0xe0, 0x90, 0xe0, 0x90, 0xe0, // b
+    0xf0, 0x80, 0x80, 0x80, 0xf0, // c
+    0xe0, 0x90, 0x90, 0x90, 0xe0, // d
+    0xf0, 0x80, 0xf0, 0x80, 0xf0, // e
+    0xf0, 0x80, 0xf0, 0x80, 0x80  // f
+];
+
+var Chip8State = createEnum([
+    "paused",
+    "running"
+]);
+
+var Chip8 = {
+    state: Chip8State.paused,
+    nextState: Chip8State.paused,
+    yieldedKey: undefined,
+
+    registers: createArray(Register._names.length),
+    stack: createArray(32), // 16 bits each
+    memory: createArray(4096), // 8 bits each
+    display: createArray(displayWidth * displayHeight), // 1 bit each
+    keys: createArray(16),
+
+    reset: function (binary) {
+        this.state = Chip8State.paused;
+
+        clearArray(this.registers);
+        clearArray(this.stack);
+        clearArray(this.memory);
+        clearArray(this.display);
+        clearArray(this.keys);
+
+        // Fonts
+        var fontBase = 0;
+        for (var i = 0; i < font.length; i++) {
+            this.memory[fontBase + i] = font[i];
+        }
+
+        var base = 0x200;
+        for (var i = 0; i < binary.length; i++) {
+            this.memory[base + i] = binary[i];
+        }
+    
+        this.registers[Register.pc] = base;
+    },
+
+    get16: function (address) {
+        return (this.memory[address] << 8) | (this.memory[address + 1]);
+    },
+
+    getxy: function (x, y) {
+        return this.display[y * displayWidth + x];
+    },
+
+    setxy: function (x, y, value) {
+        var index = y * displayWidth + x;
+        this.display[index] = value;
+    },
+
+    process: function () {
+        // Update timers
+        this.registers[Register.dt] = Math.max(0, this.registers[Register.dt] - 1);
+        this.registers[Register.st] = Math.max(0, this.registers[Register.st] - 1);
+
+        // Fetch instruction
+        var pc = this.registers[Register.pc];
+        this.registers[Register.pc] = pc + 2;
+
+        var instruction = Instruction.parse(this.get16(pc));
+        switch (instruction.opcode) {
+            case Opcode.cls:
+            clearArray(this.display);
+            break;
+
+            case Opcode.draw:
+            var spriteAddress = this.registers[Register.i];
+            var x0 = this.registers[instruction.a];
+            var y0 = this.registers[instruction.b];
+            var bytes = instruction.c;
+            var collided = false;
+            for (var byte = 0; byte < bytes; byte++) {
+                for (var i = 0; i < 8; i++) {
+                    var x = (x0 + i) % displayWidth;
+                    var y = (y0 + byte) % displayHeight;
+                    var pixel_destination = this.getxy(x, y);
+                    var pixel_source = (this.memory[spriteAddress + byte] >> (7 - i)) & 0x1;
+                    this.setxy(x, y, pixel_destination ^ pixel_source);
+                    if (pixel_destination && pixel_source) {
+                        collided = true;
+                    }
+                }
+            }
+
+            this.registers[Register.vf] = collided ? 1 : 0;
+            break;
+
+            case Opcode.ldstr:
+            this.registers[Register.st] = this.registers[instruction.a];
+            break;
+
+            case Opcode.j:
+            this.registers[Register.pc] = instruction.a;
+            break;
+
+            case Opcode.jr0:
+            this.registers[Register.pc] = instruction.a + this.registers[0];
+            break;
+
+            case Opcode.ret:
+            var sp = this.registers[Register.sp] - 1;
+            this.registers[Register.pc] = this.stack[sp];
+            this.registers[Register.sp] = sp;
+            break;
+
+            case Opcode.call:
+            var sp = this.registers[Register.sp];
+            this.stack[sp] = this.registers[Register.pc];
+            this.registers[Register.sp] = sp + 1;
+            break;
+
+            case Opcode.seq:
+            if (this.registers[instruction.a] === instruction.b) {
+                this.registers[Register.pc] = pc + 4;
+            }
+            break;
+
+            case Opcode.seqr:
+            if (this.registers[instruction.a] === this.registers[instruction.b]) {
+                this.registers[Register.pc] = pc + 4;
+            }
+            break;
+
+            case Opcode.sneq:
+            if (this.registers[instruction.a] !== instruction.b) {
+                this.registers[Register.pc] = pc + 4;
+            }
+            break;
+
+            case Opcode.sneqr:
+            if (this.registers[instruction.a] !== this.registers[instruction.b]) {
+                this.registers[Register.pc] = pc + 4;
+            }
+            break;
+
+            case Opcode.skp:
+            if (this.keys[this.registers[instruction.a]]) {
+                this.registers[Register.pc] = pc + 4;
+            }
+            break;
+
+            case Opcode.sknp:
+            if (!this.keys[this.registers[instruction.a]]) {
+                this.registers[Register.pc] = pc + 4;
+            }
+            break;
+
+            case Opcode.ldi:
+            this.registers[instruction.a] = instruction.b;
+            break;
+
+            case Opcode.copy:
+            this.registers[instruction.a] = this.registers[instruction.b];
+            break;
+
+            case Opcode.ldx:
+            var max = instruction.a;
+            var base = this.registers[Register.i];
+            for (var i = 0; i <= max; i++) {
+                this.registers[i] = this.memory[base + i];
+            }
+            break;
+
+            case Opcode.ldai:
+            this.registers[Register.i] = instruction.a;
+            break;
+
+            case Opcode.ldaf:
+            var value = this.registers[instruction.a];
+            if (value >= 0 && value <= 15) {
+                this.registers[Register.i] = this.registers[instruction.a] * 5;
+            }
+            break;
+
+            case Opcode.addar:
+            this.registers[Register.i] = this.registers[Register.i] + this.registers[instruction.a];
+            break;
+
+            case Opcode.stx:
+            var max = instruction.a;
+            var base = this.registers[Register.i];
+            for (var i = 0; i <= max; i++) {
+                this.memory[base + i] = this.registers[i];
+            }
+            break;
+
+            case Opcode.stbr:
+            var value = this.registers[instruction.a];
+            var base = this.registers[Register.i];
+            this.memory[base] = Math.floor(value / 100);
+            this.memory[base + 1] = Math.floor((value % 100) / 10);
+            this.memory[base + 2] = value % 10;
+            break;
+
+            case Opcode.ldrdt:
+            this.registers[instruction.a] = this.registers[Register.dt];
+            break;
+
+            case Opcode.lddtr:
+            this.registers[Register.dt] = this.registers[instruction.a];
+            break;
+
+            case Opcode.ldkp:
+            if (this.yieldedKey !== undefined && this.yieldedKey !== null) {
+                this.registers[instruction.a] = this.yieldedKey;
+                this.resume();
+                this.yieldedKey = undefined;
+            } else {
+                if (this.yieldedKey === undefined) {
+                    this.nextState = this.state;
+                    this.state = Chip8State.paused;
+                    this.yieldedKey = null;
+                }
+
+                this.registers[Register.pc] = pc; // Don't advance
+            }
+            break;
+
+            case Opcode.addi:
+            case Opcode.addr:
+            var a = this.registers[instruction.a];
+            var b = (instruction.opcode == Opcode.addi) ? instruction.b : this.registers[instruction.b];
+            var result = a + b;
+            this.registers[instruction.a] = result % 256;
+            this.registers[Register.vf] = (result < 256) ? 0 : 1;
+            break;
+
+            case Opcode.subr:
+            case Opcode.busr:
+            var a, b;
+            if (instruction.opcode == Opcode.subr) {
+                a = this.registers[instruction.a]
+                b = this.registers[instruction.b]
+            } else {
+                a = this.registers[instruction.b]
+                b = this.registers[instruction.a]
+            }
+            var result = a - b;
+            if (result > 0) {
+                this.registers[instruction.a] = result;
+                this.registers[Register.vf] = 0;
+            } else {
+                this.registers[instruction.a] = result + 256;
+                this.registers[Register.vf] = 1;
+            }
+            break;
+
+            case Opcode.orr:
+            this.registers[instruction.a] = this.registers[instruction.a] | this.registers[instruction.b];
+            break;
+
+            case Opcode.andr:
+            this.registers[instruction.a] = this.registers[instruction.a] & this.registers[instruction.b];
+            break;
+
+            case Opcode.xorr:
+            this.registers[instruction.a] = this.registers[instruction.a] ^ this.registers[instruction.b];
+            break;
+
+            case Opcode.shr:
+            var value = this.registers[instruction.a];
+            this.registers[Register.vf] = a & 0x1;
+            this.registers[instruction.a] = value >> 1;
+            break;
+
+            case Opcode.shl:
+            var value = this.registers[instruction.a];
+            this.registers[Register.vf] = a >> 7;
+            this.registers[instruction.a] = value << 1;
+            break;
+
+            case Opcode.rnd:
+            this.registers[instruction.a] = Math.floor(Math.random() * 256) & instruction.b;
+            break;
+        }
+    },
+
+    step: function () {
+        this.nextState = this.state;
+        this.state = Chip8State.paused;
+        this.process();
+    },
+
+    resume: function () {
+        this.state = this.nextState;
+
+        if (this.state === Chip8State.running) {
+            var that = this;
+            setTimeout(function () {
+                that.process();
+                that.runCallback();
+    
+                if (that.state === Chip8State.running) {
+                    that.run(that.runCallback);
+                }
+            }, 17 /* TODO: More reasonable clock speed */)
+        }
+    },
+
+    run: function (callback) {
+        this.runCallback = callback;
+        this.nextState = Chip8State.running;
+        this.resume();
+    }
+};
+
+
+// Parsing
+function parseHex(s) {
+    var tokens = s.split(/[, \n]+/);
+    var bytes = [];
+    for (var i = 0; i < tokens.length; i++) {
+        var token = tokens[i];
+        if (token.length == 2) {
+            bytes.push(parseInt(token, 16));
+        }
+    }
+
+    return bytes;
+}
+
+// Input
+function getKeyFromEvent(event) {
+    var char =  String.fromCharCode(event.keyCode);
+    if (char !== undefined && char !== null) {
+        char = char.toLowerCase();
+        if ((char >= "0" && char <= "9") || (char >= "a" && char <= "f")) {
+            var index = parseInt(char, 16);
+            return index;
+        }
+    }
+}
+
+document.addEventListener("keydown", function(event) {
+    var index = getKeyFromEvent(event);
+    if (index !== undefined) {
+        Chip8.keys[index] = true;
+
+        if (Chip8.yieldedKey === null) {
+            Chip8.yieldedKey = index;
+            Chip8.resume();
+        }
+    }
+}, false);
+
+document.addEventListener("keyup", function(event) {
+    var index = getKeyFromEvent(event);
+    if (index !== undefined) {
+        Chip8.keys[index] = false;
+    }
+}, false);
+
+// Display
+var Display = {
+    canvas:  document.getElementById("chip8_display"),
+    context: document.getElementById("chip8_display").getContext("2d"),
+
+    refresh: function () {
+        var width = this.canvas.width;
+        var height = this.canvas.height;
+        this.context.fillStyle = "#000";
+        this.context.fillRect(0, 0, width, height);
+        this.context.fillStyle = "#0f0";
+
+        var pw = width / displayWidth;
+        var ph = height / displayHeight;
+
+        for (var x = 0; x < displayWidth; x++) {
+            for (var y = 0; y < displayHeight; y++) {
+                if (Chip8.getxy(x, y)) {
+                    this.context.fillRect(x * pw, y * ph, pw, ph);
+                }
+            }
+        }
+    }
+};
+
+// Processor state
+var stateNext = document.getElementById("chip8_state_next");
+function updateState() {
+    var binary = Chip8.get16(Chip8.registers[Register.pc]);
+    var instruction = Instruction.parse(binary);
+    stateNext.innerText = Instruction.stringify(instruction);
+}
+
+// Control
+var started = false;
+function startIfNeeded() {
+    if (!started) {
+        var hex = document.getElementById("chip8_hex").value;
+        var bytes = parseHex(hex);
+        Chip8.reset(bytes);
+        Display.refresh();
+        started = true;
+    }
+}
+
+document.getElementById("chip8_run").onclick = function () {
+    startIfNeeded();
+    Chip8.state = Chip8State.running;
+
+    Chip8.run(function () {
+        Display.refresh();
+    });
+};
+
+document.getElementById("chip8_step").onclick = function () {
+    startIfNeeded();
+    Chip8.step();
+    Display.refresh();
+    updateState();
+};
+
+// Disassembler
+function disassemble(bytes) {
+    var s = "";
+    Instruction.parseAll(bytes, function (instruction) {
+        s += Instruction.stringify(instruction);
+        s += "\n";
+    });
+    return s;
+}
+
+document.getElementById("chip8_disassemble").onclick = function () {
+    var hex = document.getElementById("chip8_hex").value;
+    var bytes = parseHex(hex);
+    document.getElementById("chip8_disassembly").value = disassemble(bytes);
+};
