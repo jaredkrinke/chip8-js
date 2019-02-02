@@ -310,7 +310,16 @@ var font = [
     0xf0, 0x80, 0xf0, 0x80, 0x80  // f
 ];
 
+var Chip8State = createEnum([
+    "paused",
+    "running"
+]);
+
 var Chip8 = {
+    state: Chip8State.paused,
+    nextState: Chip8State.paused,
+    yieldedKey: undefined,
+
     registers: createArray(Register._names.length),
     stack: createArray(32), // 16 bits each
     memory: createArray(4096), // 8 bits each
@@ -318,6 +327,8 @@ var Chip8 = {
     keys: createArray(16),
 
     reset: function (binary) {
+        this.state = Chip8State.paused;
+
         clearArray(this.registers);
         clearArray(this.stack);
         clearArray(this.memory);
@@ -382,7 +393,99 @@ var Chip8 = {
 
             this.registers[Register.vf] = collided ? 1 : 0;
             break;
+
+            case Opcode.j:
+            this.registers[Register.pc] = instruction.a;
+            break;
+
+            case Opcode.ldi:
+            this.registers[instruction.a] = instruction.b;
+            break;
+
+            case Opcode.ldx:
+            var max = instruction.a;
+            var base = this.registers[Register.i];
+            for (var i = 0; i <= max; i++) {
+                this.registers[i] = this.memory[base + i];
+            }
+            break;
+
+            case Opcode.ldai:
+            this.registers[Register.i] = instruction.a;
+            break;
+
+            case Opcode.ldaf:
+            var value = this.registers[instruction.a];
+            if (value >= 0 && value <= 15) {
+                this.registers[Register.i] = this.registers[instruction.a] * 5;
+            }
+            break;
+
+            case Opcode.stx:
+            var max = instruction.a;
+            var base = this.registers[Register.i];
+            for (var i = 0; i <= max; i++) {
+                this.memory[base + i] = this.registers[i];
+            }
+            break;
+
+            case Opcode.stbr:
+            var value = this.registers[instruction.a];
+            var base = this.registers[Register.i];
+            this.memory[base] = Math.floor(value / 100);
+            this.memory[base + 1] = Math.floor((value % 100) / 10);
+            this.memory[base + 2] = value % 10;
+            break;
+
+            case Opcode.ldkp:
+            if (this.yieldedKey !== undefined && this.yieldedKey !== null) {
+                this.registers[instruction.a] = this.yieldedKey;
+                this.resume();
+                this.yieldedKey = undefined;
+            } else {
+                if (this.yieldedKey === undefined) {
+                    this.nextState = this.state;
+                    this.state = Chip8State.paused;
+                    this.yieldedKey = null;
+                }
+
+                this.registers[Register.pc] = pc; // Don't advance
+            }
+            break;
+
+            case Opcode.rnd:
+            this.registers[instruction.a] = Math.floor(Math.random() * 256) & instruction.b;
+            break;
         }
+    },
+
+    step: function () {
+        this.nextState = Chip8State.running;
+        this.resume();
+    },
+
+    resume: function () {
+        this.state = this.nextState;
+
+        if (this.state === Chip8State.running) {
+            var that = this;
+            setTimeout(function () {
+                that.process();
+                that.runCallback();
+    
+                if (that.state === Chip8State.running) {
+                    that.run(that.runCallback);
+                }
+            }, 50 /* TODO: More reasonable clock speed */)
+        } else {
+            this.process();
+        }
+    },
+
+    run: function (callback) {
+        this.runCallback = callback;
+        this.nextState = Chip8State.running;
+        this.resume();
     }
 };
 
@@ -400,6 +503,37 @@ function parseHex(s) {
 
     return bytes;
 }
+
+// Input
+function getKeyFromEvent(event) {
+    var char = event.key;
+    if (char !== undefined && char !== null) {
+        char = char.toLowerCase();
+        if ((char >= "0" && char <= "9") || (char >= "a" && char <= "z")) {
+            var index = parseInt(char, 16);
+            return index;
+        }
+    }
+}
+
+document.addEventListener("keydown", function(event) {
+    var index = getKeyFromEvent(event);
+    if (index !== undefined) {
+        Chip8.keys[index] = true;
+
+        if (Chip8.yieldedKey === null) {
+            Chip8.yieldedKey = index;
+            Chip8.resume();
+        }
+    }
+}, false);
+
+document.addEventListener("keyup", function(event) {
+    var index = getKeyFromEvent(event);
+    if (index !== undefined) {
+        Chip8.keys[index] = true;
+    }
+}, false);
 
 // Display
 var Display = {
@@ -436,7 +570,7 @@ function updateState() {
 
 // Control
 var started = false;
-document.getElementById("chip8_step").onclick = function () {
+function startIfNeeded() {
     if (!started) {
         var hex = document.getElementById("chip8_hex").value;
         var bytes = parseHex(hex);
@@ -444,11 +578,25 @@ document.getElementById("chip8_step").onclick = function () {
         Display.refresh();
         started = true;
     }
+}
 
-    Chip8.process();
-    Display.refresh();
-    updateState();
+document.getElementById("chip8_run").onclick = function () {
+    startIfNeeded();
+    Chip8.state = Chip8State.running;
+
+    Chip8.run(function () {
+        Display.refresh();
+    });
 };
+
+// document.getElementById("chip8_step").onclick = function () {
+//     startIfNeeded();
+//     Chip8.state = Chip8State.paused;
+
+//     Chip8.step();
+//     Display.refresh();
+//     updateState();
+// };
 
 // Disassembler
 function disassemble(bytes) {
