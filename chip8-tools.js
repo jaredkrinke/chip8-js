@@ -363,6 +363,11 @@ var Chip8 = {
     },
 
     process: function () {
+        // Update timers
+        this.registers[Register.dt] = Math.max(0, this.registers[Register.dt] - 1);
+        this.registers[Register.st] = Math.max(0, this.registers[Register.st] - 1);
+
+        // Fetch instruction
         var pc = this.registers[Register.pc];
         this.registers[Register.pc] = pc + 2;
 
@@ -394,12 +399,72 @@ var Chip8 = {
             this.registers[Register.vf] = collided ? 1 : 0;
             break;
 
+            case Opcode.ldstr:
+            this.registers[Register.st] = this.registers[instruction.a];
+            break;
+
             case Opcode.j:
             this.registers[Register.pc] = instruction.a;
             break;
 
+            case Opcode.jr0:
+            this.registers[Register.pc] = instruction.a + this.registers[0];
+            break;
+
+            case Opcode.ret:
+            var sp = this.registers[Register.sp] - 1;
+            this.registers[Register.pc] = this.stack[sp];
+            this.registers[Register.sp] = sp;
+            break;
+
+            case Opcode.call:
+            var sp = this.registers[Register.sp];
+            this.stack[sp] = this.registers[Register.pc];
+            this.registers[Register.sp] = sp + 1;
+            break;
+
+            case Opcode.seq:
+            if (this.registers[instruction.a] === instruction.b) {
+                this.registers[Register.pc] = pc + 4;
+            }
+            break;
+
+            case Opcode.seqr:
+            if (this.registers[instruction.a] === this.registers[instruction.b]) {
+                this.registers[Register.pc] = pc + 4;
+            }
+            break;
+
+            case Opcode.sneq:
+            if (this.registers[instruction.a] !== instruction.b) {
+                this.registers[Register.pc] = pc + 4;
+            }
+            break;
+
+            case Opcode.sneqr:
+            if (this.registers[instruction.a] !== this.registers[instruction.b]) {
+                this.registers[Register.pc] = pc + 4;
+            }
+            break;
+
+            case Opcode.skp:
+            if (this.keys[this.registers[instruction.a]]) {
+                this.registers[Register.pc] = pc + 4;
+            }
+            break;
+
+            case Opcode.sknp:
+            if (!this.keys[this.registers[instruction.a]]) {
+                this.registers[Register.pc] = pc + 4;
+            }
+            break;
+
             case Opcode.ldi:
             this.registers[instruction.a] = instruction.b;
+            break;
+
+            case Opcode.copy:
+            this.registers[instruction.a] = this.registers[instruction.b];
             break;
 
             case Opcode.ldx:
@@ -421,6 +486,10 @@ var Chip8 = {
             }
             break;
 
+            case Opcode.addar:
+            this.registers[Register.i] = this.registers[Register.i] + this.registers[instruction.a];
+            break;
+
             case Opcode.stx:
             var max = instruction.a;
             var base = this.registers[Register.i];
@@ -435,6 +504,14 @@ var Chip8 = {
             this.memory[base] = Math.floor(value / 100);
             this.memory[base + 1] = Math.floor((value % 100) / 10);
             this.memory[base + 2] = value % 10;
+            break;
+
+            case Opcode.ldrdt:
+            this.registers[instruction.a] = this.registers[Register.dt];
+            break;
+
+            case Opcode.lddtr:
+            this.registers[Register.dt] = this.registers[instruction.a];
             break;
 
             case Opcode.ldkp:
@@ -453,6 +530,59 @@ var Chip8 = {
             }
             break;
 
+            case Opcode.addi:
+            case Opcode.addr:
+            var a = this.registers[instruction.a];
+            var b = (instruction.opcode == Opcode.addi) ? instruction.b : this.registers[instruction.b];
+            var result = a + b;
+            this.registers[instruction.a] = result % 256;
+            this.registers[Register.vf] = (result < 256) ? 0 : 1;
+            break;
+
+            case Opcode.subr:
+            case Opcode.busr:
+            var a, b;
+            if (instruction.opcode == Opcode.subr) {
+                a = this.registers[instruction.a]
+                b = this.registers[instruction.b]
+            } else {
+                a = this.registers[instruction.b]
+                b = this.registers[instruction.a]
+            }
+            var result = a - b;
+            if (result > 0) {
+                this.registers[instruction.a] = result;
+                this.registers[Register.vf] = 0;
+            } else {
+                this.registers[instruction.a] = result + 256;
+                this.registers[Register.vf] = 1;
+            }
+            break;
+
+            case Opcode.orr:
+            this.registers[instruction.a] = this.registers[instruction.a] | this.registers[instruction.b];
+            break;
+
+            case Opcode.andr:
+            this.registers[instruction.a] = this.registers[instruction.a] & this.registers[instruction.b];
+            break;
+
+            case Opcode.xorr:
+            this.registers[instruction.a] = this.registers[instruction.a] ^ this.registers[instruction.b];
+            break;
+
+            case Opcode.shr:
+            var value = this.registers[instruction.a];
+            this.registers[Register.vf] = a & 0x1;
+            this.registers[instruction.a] = value >> 1;
+            break;
+
+            case Opcode.shl:
+            var value = this.registers[instruction.a];
+            this.registers[Register.vf] = a >> 7;
+            this.registers[instruction.a] = value << 1;
+            break;
+
             case Opcode.rnd:
             this.registers[instruction.a] = Math.floor(Math.random() * 256) & instruction.b;
             break;
@@ -460,7 +590,8 @@ var Chip8 = {
     },
 
     step: function () {
-        this.nextState = Chip8State.paused;
+        this.nextState = this.state;
+        this.state = Chip8State.paused;
         this.process();
     },
 
@@ -476,7 +607,7 @@ var Chip8 = {
                 if (that.state === Chip8State.running) {
                     that.run(that.runCallback);
                 }
-            }, 50 /* TODO: More reasonable clock speed */)
+            }, 17 /* TODO: More reasonable clock speed */)
         }
     },
 
@@ -529,7 +660,7 @@ document.addEventListener("keydown", function(event) {
 document.addEventListener("keyup", function(event) {
     var index = getKeyFromEvent(event);
     if (index !== undefined) {
-        Chip8.keys[index] = true;
+        Chip8.keys[index] = false;
     }
 }, false);
 
