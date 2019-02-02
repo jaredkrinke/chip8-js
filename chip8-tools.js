@@ -460,8 +460,8 @@ var Chip8 = {
     },
 
     step: function () {
-        this.nextState = Chip8State.running;
-        this.resume();
+        this.nextState = Chip8State.paused;
+        this.process();
     },
 
     resume: function () {
@@ -477,8 +477,6 @@ var Chip8 = {
                     that.run(that.runCallback);
                 }
             }, 50 /* TODO: More reasonable clock speed */)
-        } else {
-            this.process();
         }
     },
 
@@ -506,10 +504,10 @@ function parseHex(s) {
 
 // Input
 function getKeyFromEvent(event) {
-    var char = event.key;
+    var char =  String.fromCharCode(event.keyCode);
     if (char !== undefined && char !== null) {
         char = char.toLowerCase();
-        if ((char >= "0" && char <= "9") || (char >= "a" && char <= "z")) {
+        if ((char >= "0" && char <= "9") || (char >= "a" && char <= "f")) {
             var index = parseInt(char, 16);
             return index;
         }
@@ -589,14 +587,12 @@ document.getElementById("chip8_run").onclick = function () {
     });
 };
 
-// document.getElementById("chip8_step").onclick = function () {
-//     startIfNeeded();
-//     Chip8.state = Chip8State.paused;
-
-//     Chip8.step();
-//     Display.refresh();
-//     updateState();
-// };
+document.getElementById("chip8_step").onclick = function () {
+    startIfNeeded();
+    Chip8.step();
+    Display.refresh();
+    updateState();
+};
 
 // Disassembler
 function disassemble(bytes) {
