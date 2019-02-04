@@ -260,6 +260,8 @@ function disassembleInstruction(word) {
 }
 
 // Main
+// TODO: Support assembling an entire program with labels, comments, and maybe hex numbers, .data/.code
+// TODO: How to handle alignment? At least support non-code ending in an uneven number of bytes...
 if (process.argv.length == 4) {
     var command = process.argv[2];
     var argument = process.argv[3];
