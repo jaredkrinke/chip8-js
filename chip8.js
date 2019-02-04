@@ -316,9 +316,16 @@ var Chip8State = createEnum([
 ]);
 
 var Chip8 = {
+    frequency: 6000, // Hz
+    started: undefined,
+    counter: 0,
+
     state: Chip8State.paused,
     nextState: Chip8State.paused,
+    lastState: Chip8State.paused,
     yieldedKey: undefined,
+
+    displayUpdated: undefined,
 
     registers: createArray(Register._names.length),
     stack: createArray(32), // 16 bits each
@@ -363,9 +370,24 @@ var Chip8 = {
     },
 
     process: function () {
+        if (this.lastState == Chip8State.paused && this.state == Chip8State.running) {
+            this.started = Date.now();
+            this.counter = 0;
+        }
+        this.lastState = this.state;
+
         // Update timers
-        this.registers[Register.dt] = Math.max(0, this.registers[Register.dt] - 1);
-        this.registers[Register.st] = Math.max(0, this.registers[Register.st] - 1);
+        if (this.started) {
+            var counter = Math.floor((Date.now() - this.started) / (1000 / 60));
+            if (counter > 0) {
+                var steps = counter - this.counter;
+                if (steps > 0) {
+                    this.registers[Register.dt] = Math.max(0, this.registers[Register.dt] - steps);
+                    this.registers[Register.st] = Math.max(0, this.registers[Register.st] - steps);
+                }
+            }
+            this.counter = counter;
+        }
 
         // Fetch instruction
         var pc = this.registers[Register.pc];
@@ -374,6 +396,7 @@ var Chip8 = {
         var instruction = Instruction.parse(this.get16(pc));
         switch (instruction.opcode) {
             case Opcode.cls:
+            this.displayUpdated(true);
             clearArray(this.display);
             break;
 
@@ -597,22 +620,35 @@ var Chip8 = {
 
     resume: function () {
         this.state = this.nextState;
-
         if (this.state === Chip8State.running) {
+            // Run in chunks of 1/60th of a second
+            var next = Date.now() + 1000 / 60;
+            for (var i = 0; i < this.frequency / 60; i++) {
+                this.process();
+            }
+
+            // Delay, if needed
+            var now = Date.now();
+            var delay = 0;
+            if (now < next) {
+                delay = next - now;
+            }
+
+            // TODO: Better logic for updating display
+            this.displayUpdated(false);
+
             var that = this;
             setTimeout(function () {
-                that.process();
-                that.runCallback();
-    
                 if (that.state === Chip8State.running) {
-                    that.run(that.runCallback);
+                    that.run(that.displayUpdated);
                 }
-            }, 17 /* TODO: More reasonable clock speed */)
+            }, delay)
         }
     },
 
-    run: function (callback) {
-        this.runCallback = callback;
+    run: function (displayUpdated) {
+        // TODO: This shouldn't schedule another callback if one is already running!
+        this.displayUpdated = displayUpdated;
         this.nextState = Chip8State.running;
         this.resume();
     }
@@ -713,8 +749,13 @@ document.getElementById("chip8_run").onclick = function () {
     startIfNeeded();
     Chip8.state = Chip8State.running;
 
-    Chip8.run(function () {
-        Display.refresh();
+    var lastDisplay = 0;
+    Chip8.run(function (flush) {
+        var now = Date.now();
+        if (flush || (now - lastDisplay) > (1000 / 30)) {
+            Display.refresh();
+            lastDisplay = now;
+        }
     });
 };
 
