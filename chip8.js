@@ -231,7 +231,7 @@ Instruction.parse = function (binary) {
 Instruction.parseAll = function (bytes, cb) {
     for (var i = 0; i < bytes.length - 1; i += 2) {
         var binary = (bytes[i] << 8) | bytes[i + 1];
-        cb(Instruction.parse(binary), binary);
+        cb(Instruction.parse(binary), binary, Chip8.programBase + i);
     }
 };
 
@@ -317,6 +317,8 @@ var Chip8State = createEnum([
 
 var Chip8 = {
     frequency: 6000, // Hz
+    programBase: 0x200,
+
     started: undefined,
     counter: 0,
 
@@ -348,7 +350,7 @@ var Chip8 = {
             this.memory[fontBase + i] = font[i];
         }
 
-        var base = 0x200;
+        var base = Chip8.programBase;
         for (var i = 0; i < binary.length; i++) {
             this.memory[base + i] = binary[i];
         }
@@ -726,10 +728,13 @@ var Display = {
 };
 
 // Processor state
+var stateAddress = document.getElementById("chip8_state_address");
 var stateNext = document.getElementById("chip8_state_next");
 function updateState() {
-    var binary = Chip8.get16(Chip8.registers[Register.pc]);
+    var pc = Chip8.registers[Register.pc];
+    var binary = Chip8.get16(pc);
     var instruction = Instruction.parse(binary);
+    stateAddress.innerText = pc;
     stateNext.innerText = Instruction.stringify(instruction);
 }
 
@@ -769,7 +774,9 @@ document.getElementById("chip8_step").onclick = function () {
 // Disassembler
 function disassemble(bytes) {
     var s = "";
-    Instruction.parseAll(bytes, function (instruction) {
+    Instruction.parseAll(bytes, function (instruction, binary, address) {
+        s += address;
+        s += ": ";
         s += Instruction.stringify(instruction);
         s += "\n";
     });
