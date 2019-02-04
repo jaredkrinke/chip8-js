@@ -316,7 +316,7 @@ var Chip8State = createEnum([
 ]);
 
 var Chip8 = {
-    frequency: 6000, // Hz
+    frequency: 1500, // Hz
     programBase: 0x200,
 
     started: undefined,
@@ -446,6 +446,7 @@ var Chip8 = {
             var sp = this.registers[Register.sp];
             this.stack[sp] = this.registers[Register.pc];
             this.registers[Register.sp] = sp + 1;
+            this.registers[Register.pc] = instruction.a;
             break;
 
             case Opcode.seq:
