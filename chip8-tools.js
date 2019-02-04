@@ -13,8 +13,8 @@ function createEnum(values) {
 }
 
 var ArgumentType = createEnum([
-    "register",
     "word",
+    "register",
     "address",
     "byte",
     "halfByte",
@@ -155,6 +155,7 @@ var instructionSet = [
 ];
 
 var instructionNameToDeclarations = {};
+var opcodeToDeclaration = {};
 for (var i = 0; i < instructionSet.length; i++) {
     var declaration = instructionSet[i];
     var name = declaration.name;
@@ -163,6 +164,83 @@ for (var i = 0; i < instructionSet.length; i++) {
     }
 
     instructionNameToDeclarations[name].push(declaration);
+    opcodeToDeclaration[declaration.opcode] = declaration;
+}
+
+function Instruction(opcode, values) {
+    this.opcode = opcode;
+    this.values = values;
+}
+
+// Hand-written decoder, to minimize branching
+function decodeInstruction(word) {
+    switch ((word >> 12) & 0xf) {
+        case 0:
+        {
+            switch (word & 0xfff) {
+                case 0x0e0: return new Instruction(Opcode.cls);
+                case 0x0ee: return new Instruction(Opcode.ret);
+            }
+        }
+        break;
+
+        case 1: return new Instruction(Opcode.j, [ word & 0xfff ]);
+        case 2: return new Instruction(Opcode.call, [ word & 0xfff ]);
+        case 3: return new Instruction(Opcode.seq, [ (word >> 8) & 0xf, word & 0xff ]);
+        case 4: return new Instruction(Opcode.sneq, [ (word >> 8) & 0xf, word & 0xff ]);
+        case 5: return new Instruction(Opcode.seqr, [ (word >> 8) & 0xf, (word >> 4) & 0xf ]);
+        case 6: return new Instruction(Opcode.ldi, [ (word >> 8) & 0xf, word & 0xff ]);
+        case 7: return new Instruction(Opcode.addi, [ (word >> 8) & 0xf, word & 0xff ]);
+
+        case 8:
+        {
+            switch (word & 0xf) {
+                case 0: return new Instruction(Opcode.cpy, [ (word >> 8) & 0xf, (word >> 4) & 0xf ]);
+                case 1: return new Instruction(Opcode.or, [ (word >> 8) & 0xf, (word >> 4) & 0xf ]);
+                case 2: return new Instruction(Opcode.and, [ (word >> 8) & 0xf, (word >> 4) & 0xf ]);
+                case 3: return new Instruction(Opcode.xor, [ (word >> 8) & 0xf, (word >> 4) & 0xf ]);
+                case 4: return new Instruction(Opcode.addr, [ (word >> 8) & 0xf, (word >> 4) & 0xf ]);
+                case 5: return new Instruction(Opcode.sub, [ (word >> 8) & 0xf, (word >> 4) & 0xf ]);
+                case 6: return new Instruction(Opcode.shr, [ (word >> 8) & 0xf ]);
+                case 7: return new Instruction(Opcode.bus, [ (word >> 8) & 0xf, (word >> 4) & 0xf ]);
+                case 0xe: return new Instruction(Opcode.shl, [ (word >> 8) & 0xf ]);
+            }
+        }
+        break;
+
+        case 9: return new Instruction(Opcode.sneqr, [ (word >> 8) & 0xf, (word >> 4) & 0xf ]);
+        case 0xa: return new Instruction(Opcode.ldai, [ null, word & 0xfff ]);
+        case 0xb: return new Instruction(Opcode.jo, [ word & 0xfff ]);
+        case 0xc: return new Instruction(Opcode.rnd, [ (word >> 8) & 0xf, word & 0xff ]);
+        case 0xd: return new Instruction(Opcode.drw, [ (word >> 8) & 0xf, (word >> 4) & 0xf, word & 0xf ]);
+
+        case 0xe:
+        {
+            switch (word & 0xff) {
+                case 0x9e: return new Instruction(Opcode.skp, [ (word >> 8) & 0xf ]);
+                case 0xa1: return new Instruction(Opcode.sknp, [ (word >> 8) & 0xf ]);
+            }
+        }
+        break;
+
+        case 0xf:
+        {
+            switch (word & 0xff) {
+                case 7: return new Instruction(Opcode.ldrdt, [ (word >> 8) & 0xf, null ]);
+                case 0xa: return new Instruction(Opcode.ldkp, [ (word >> 8) & 0xf ]);
+                case 0x15: return new Instruction(Opcode.lddtr, [ null, (word >> 8) & 0xf ]);
+                case 0x18: return new Instruction(Opcode.ldstr, [ null, (word >> 8) & 0xf ]);
+                case 0x1e: return new Instruction(Opcode.addar, [ null, (word >> 8) & 0xf ]);
+                case 0x29: return new Instruction(Opcode.ldaf, [ null, (word >> 8) & 0xf ]);
+                case 0x33: return new Instruction(Opcode.stbcd, [ (word >> 8) & 0xf ]);
+                case 0x55: return new Instruction(Opcode.stx, [ (word >> 8) & 0xf ]);
+                case 0x65: return new Instruction(Opcode.ldx, [ (word >> 8) & 0xf ]);
+            }
+        }
+        break;
+    }
+
+    return new Instruction(Opcode.raw, [ word ]);
 }
 
 function isValidNumber(str) {
@@ -191,6 +269,25 @@ function parseArgument(str) {
     } else {
         throw "Invalid argument: " + str;
     }
+}
+
+function stringifyArgument(type, value) {
+    switch (type) {
+        case ArgumentType.word:
+        case ArgumentType.address:
+        case ArgumentType.byte:
+        case ArgumentType.halfByte:
+        {
+            return value.toString();
+        }
+
+        case ArgumentType.register: return "V" + value.toString(16).toUpperCase();
+        case ArgumentType.i: return "I";
+        case ArgumentType.dt: return "DT";
+        case ArgumentType.st: return "ST";
+    }
+
+    throw "Unknown argument type: " + type;
 }
 
 function assembleInstruction(str) {
@@ -256,7 +353,13 @@ function assembleInstruction(str) {
 }
 
 function disassembleInstruction(word) {
-
+    var instruction = decodeInstruction(word);
+    var declaration = opcodeToDeclaration[instruction.opcode];
+    var str = declaration.name;
+    for (var i = 0; i < declaration.arguments.length; i++) {
+        str += " " + stringifyArgument(declaration.arguments[i].type, instruction.values[i]);
+    }
+    return str;
 }
 
 // Main
@@ -267,7 +370,7 @@ if (process.argv.length == 4) {
     var argument = process.argv[3];
     if (command === "encode") {
         console.log(assembleInstruction(argument).toString(16));
-    } else if (command === "parse") {
+    } else if (command === "decode") {
         console.log(disassembleInstruction(parseInt(argument, 16)));
     }
 } else {
