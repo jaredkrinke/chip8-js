@@ -352,8 +352,23 @@ function assembleInstruction(str) {
     return word;
 }
 
+var fs = require("fs");
+
 function readFileLines(file) {
-    return require("fs").readFileSync(file).toString().split(/\r?\n\r?/);
+    return fs.readFileSync(file).toString().split(/\r?\n\r?/);
+}
+
+function readFileBytes(file) {
+    var buffer = fs.readFileSync(file);
+    var bytes = [];
+    for (byte of buffer) {
+        bytes.push(byte);
+    }
+    return bytes;
+}
+
+function outputBytes(bytes) {
+    process.stdout.write(Buffer.from(bytes));
 }
 
 function assemble(lines) {
@@ -372,7 +387,26 @@ function assemble(lines) {
 function assembleToString(bytes) {
     var str = "";
     for (var i = 0; i < bytes.length; i++) {
-        str += bytes[i].toString(16);
+        var byteString = bytes[i].toString(16);
+        if (byteString.length < 2) {
+            str += "0";
+        }
+        str += byteString;
+    }
+    return str;
+}
+
+function disassemble(bytes) {
+    // Pad to ensure two byte alignment
+    if (bytes.length % 2 == 1) {
+        bytes.push(0);
+    }
+
+    var str = "";
+    for (var i = 0; i < bytes.length; i += 2) {
+        var word = (bytes[i] << 8) | bytes[i + 1];
+        str += disassembleInstruction(word);
+        str += "\n";
     }
     return str;
 }
@@ -398,7 +432,11 @@ if (process.argv.length == 4) {
     } else if (command === "decode") {
         console.log(disassembleInstruction(parseInt(argument, 16)));
     } else if (command === "assemble") {
+        outputBytes(assemble(readFileLines(argument)));
+    } else if (command === "assemble_hex") {
         console.log(assembleToString(assemble(readFileLines(argument))));
+    } else if (command === "disassemble") {
+        console.log(disassemble(readFileBytes(argument)));
     }
 } else {
     console.log("USAGE: <program> <assemble/disassemble> <instruction>");
