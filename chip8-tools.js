@@ -352,6 +352,31 @@ function assembleInstruction(str) {
     return word;
 }
 
+function readFileLines(file) {
+    return require("fs").readFileSync(file).toString().split(/\r?\n\r?/);
+}
+
+function assemble(lines) {
+    var bytes = [];
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (line.length > 0) {
+            var word = assembleInstruction(line);
+            bytes.push(word >> 8);
+            bytes.push(word & 0xff);
+        }
+    }
+    return bytes;
+}
+
+function assembleToString(bytes) {
+    var str = "";
+    for (var i = 0; i < bytes.length; i++) {
+        str += bytes[i].toString(16);
+    }
+    return str;
+}
+
 function disassembleInstruction(word) {
     var instruction = decodeInstruction(word);
     var declaration = opcodeToDeclaration[instruction.opcode];
@@ -372,6 +397,8 @@ if (process.argv.length == 4) {
         console.log(assembleInstruction(argument).toString(16));
     } else if (command === "decode") {
         console.log(disassembleInstruction(parseInt(argument, 16)));
+    } else if (command === "assemble") {
+        console.log(assembleToString(assemble(readFileLines(argument))));
     }
 } else {
     console.log("USAGE: <program> <assemble/disassemble> <instruction>");

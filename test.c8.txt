@@ -1,0 +1,15 @@
+set_random V0 255
+set I 1000
+store_base10 V0
+load_through V0
+set V3 0
+set V4 0
+set_character I V0
+draw V3 V4 5
+add V3 5
+set_character I V1
+draw V3 V4 5
+add V3 5
+set_character I V2
+draw V3 V4 5
+jump 512
